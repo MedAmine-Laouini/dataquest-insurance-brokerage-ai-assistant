@@ -1,7 +1,6 @@
 import {
   LayoutDashboard,
   Users,
-  Building2,
   FileText,
   Layers,
   CheckSquare,
@@ -41,11 +40,6 @@ export const navigationItems: NavSection[] = [
         title: 'Clients',
         icon: Users,
         href: '/dashboard/clients',
-      },
-      {
-        title: 'Insurance Companies',
-        icon: Building2,
-        href: '/dashboard/insurance-companies',
       },
       {
         title: 'Policies',

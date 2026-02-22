@@ -69,6 +69,16 @@ class ClientOut(BaseModel):
         from_attributes = True
 
 
+# ──────────────────── Bundle Policy Schemas ────────────────────
+class BundlePolicyOut(BaseModel):
+    id: int
+    bundle_name: str
+    description: str
+
+    class Config:
+        from_attributes = True
+
+
 # ──────────────────── Dashboard Schemas ────────────────────
 class DashboardStats(BaseModel):
     total_clients: int

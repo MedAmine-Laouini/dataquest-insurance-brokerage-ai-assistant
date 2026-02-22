@@ -7,7 +7,7 @@ import math
 from sqlalchemy import select, text
 
 from app.database import engine, async_session, Base
-from app.models import User, Client, UserRole
+from app.models import User, Client, UserRole, BundlePolicy
 from app.auth import hash_password
 from app.config import settings
 
@@ -38,6 +38,30 @@ async def seed():
             print("[SEED] Created default users: admin@marcos.ai / broker@marcos.ai")
         else:
             print("[SEED] Default users already exist, skipping.")
+
+        # ── Seed bundle policies ─────────────────────────────────────
+        bp_check = await db.execute(select(BundlePolicy))
+        if not bp_check.scalars().first():
+            BUNDLES = [
+                (0, "Auto_Comprehensive",    "Full vehicle coverage including collision, liability, theft, fire, and natural disaster protection."),
+                (1, "Auto_Liability_Basic",  "Basic liability coverage for drivers, covering third-party bodily injury and property damage as required by law."),
+                (2, "Basic_Health",          "Essential health insurance covering primary care, emergency services, and preventive care for individuals."),
+                (3, "Family_Comprehensive",  "All-inclusive family bundle combining health, home, and life insurance for complete household protection."),
+                (4, "Health_Dental_Vision",  "Extended health plan bundling medical, dental, and vision care into a single comprehensive policy."),
+                (5, "Home_Premium",          "Premium homeowner's insurance covering structure, contents, and liability with extensive natural disaster protection."),
+                (6, "Home_Standard",         "Standard homeowner's insurance providing dwelling, personal property, and personal liability coverage."),
+                (7, "Premium_Health_Life",   "Top-tier package combining premium health insurance with life insurance for long-term financial security."),
+                (8, "Renter_Basic",          "Basic renters insurance covering personal belongings against theft and damage, plus personal liability."),
+                (9, "Renter_Premium",        "Enhanced renters insurance with higher coverage limits, additional riders, and identity theft protection."),
+            ]
+            db.add_all([
+                BundlePolicy(id=bid, bundle_name=name, description=desc)
+                for bid, name, desc in BUNDLES
+            ])
+            await db.commit()
+            print("[SEED] Seeded 10 bundle policies.")
+        else:
+            print("[SEED] Bundle policies already exist, skipping.")
 
         # ── Seed clients from train.csv ─────────────────────────────
         count_result = await db.execute(text("SELECT COUNT(*) FROM clients"))
