@@ -1,54 +1,155 @@
-'use client'
+﻿'use client'
 
 import React, { useState } from 'react'
 import { motion } from 'framer-motion'
-import { ChevronDown, Sparkles } from 'lucide-react'
-import { CustomerProfile, SAMPLE_CUSTOMERS } from '@/lib/classification-data'
+import { Sparkles, AlertCircle } from 'lucide-react'
+import { BUNDLE_INFO, PredictionResult } from '@/lib/classification-data'
+import { apiFetch } from '@/lib/api'
 
-interface CustomerInputFormProps {
-  onSubmit: (customer: CustomerProfile) => void
-  isLoading?: boolean
+// --- Form State ---
+
+interface MLForm {
+  estimated_annual_income:          string
+  adult_dependents:                 string
+  child_dependents:                 string
+  infant_dependents:                string
+  previous_policy_duration_months:  string
+  days_since_quote:                 string
+  grace_period_extensions:          string
+  custom_riders_requested:          string
+  vehicles_on_policy:               string
+  policy_amendments_count:          string
+  previous_claims_filed:            string
+  years_without_claims:             string
+  underwriting_processing_days:     string
+  region_code:                      string
+  broker_agency_type:               string
+  deductible_tier:                  string
+  acquisition_channel:              string
+  payment_schedule:                 string
+  employment_status:                string
+  policy_start_month:               string
+  broker_id:                        string
+  employer_id:                      string
 }
 
-const FIELD_SELECT = 'w-full bg-muted/50 border border-border rounded-lg px-4 py-2.5 text-foreground focus:border-primary outline-none transition-colors text-sm'
-const FIELD_INPUT  = 'w-full bg-muted/50 border border-border rounded-lg px-4 py-2.5 text-foreground placeholder-muted-foreground/50 focus:border-primary outline-none transition-colors text-sm'
+const DEFAULT: MLForm = {
+  estimated_annual_income:          '60000',
+  adult_dependents:                 '1',
+  child_dependents:                 '',
+  infant_dependents:                '0',
+  previous_policy_duration_months:  '12',
+  days_since_quote:                 '30',
+  grace_period_extensions:          '0',
+  custom_riders_requested:          '0',
+  vehicles_on_policy:               '1',
+  policy_amendments_count:          '0',
+  previous_claims_filed:            '0',
+  years_without_claims:             '2',
+  underwriting_processing_days:     '5',
+  region_code:                      'R01',
+  broker_agency_type:               'Independent',
+  deductible_tier:                  'Tier_2',
+  acquisition_channel:              'Online',
+  payment_schedule:                 'Monthly',
+  employment_status:                'Employed',
+  policy_start_month:               'January',
+  broker_id:                        '',
+  employer_id:                      '100',
+}
 
-export function CustomerInputForm({ onSubmit, isLoading }: CustomerInputFormProps) {
-  const [activeTab, setActiveTab] = useState<'sample' | 'custom'>('sample')
-  const [selectedId, setSelectedId] = useState<string>(SAMPLE_CUSTOMERS[0].id)
-  const [showDropdown, setShowDropdown] = useState(false)
-  const [form, setForm] = useState<Omit<CustomerProfile, 'id' | 'name'> & { name: string }>({
-    name: '',
-    age: 30,
-    gender: 'Male',
-    maritalStatus: 'Single',
-    annualIncome: 60000,
-    employmentStatus: 'Employed',
-    numDependents: 0,
-    educationLevel: "Bachelor's",
-    propertyOwnership: 'Renter',
-    vehicleType: 'Sedan',
-    priorClaimsCount: 0,
-    region: 'East',
-  })
+interface CustomerInputFormProps {
+  onResult: (result: PredictionResult) => void
+}
 
-  const selectedCustomer = SAMPLE_CUSTOMERS.find((c) => c.id === selectedId) ?? SAMPLE_CUSTOMERS[0]
+const SEL = 'w-full bg-muted/50 border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary outline-none transition-colors text-sm'
+const INP = 'w-full bg-muted/50 border border-border rounded-lg px-3 py-2 text-foreground placeholder-muted-foreground/40 focus:border-primary outline-none transition-colors text-sm'
 
-  const field = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) =>
-    setForm((prev) => ({ ...prev, [key]: value }))
+function Section({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-2">
+      <p className="text-[10px] font-bold uppercase tracking-widest text-primary/60 px-0.5">{label}</p>
+      <div className="bg-muted/20 border border-border/60 rounded-xl p-3 space-y-2.5">{children}</div>
+    </div>
+  )
+}
 
-  const handleSampleSubmit = () => onSubmit(selectedCustomer)
+function Row({ cols = 2, children }: { cols?: 2 | 3; children: React.ReactNode }) {
+  return <div className={`grid gap-2 ${cols === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>{children}</div>
+}
 
-  const handleCustomSubmit = () => {
-    if (!form.name.trim()) return
-    onSubmit({
-      id: `custom-${Date.now()}`,
-      ...form,
-      age: Number(form.age),
-      annualIncome: Number(form.annualIncome),
-      numDependents: Number(form.numDependents),
-      priorClaimsCount: Number(form.priorClaimsCount),
-    })
+function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="block text-[11px] font-medium text-muted-foreground mb-1">
+        {label}{required && <span className="text-rose-400 ml-0.5">*</span>}
+      </label>
+      {children}
+    </div>
+  )
+}
+
+export function CustomerInputForm({ onResult }: CustomerInputFormProps) {
+  const [form, setForm] = useState<MLForm>(DEFAULT)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const set = (key: keyof MLForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setForm((prev) => ({ ...prev, [key]: e.target.value }))
+
+  const n = (v: string, def = 0) => (v === '' ? def : Number(v))
+  const nullable = (v: string) => (v === '' ? null : Number(v))
+
+  const handleSubmit = async () => {
+    if (!form.estimated_annual_income) return
+    setIsLoading(true)
+    setError(null)
+    try {
+      const body = {
+        estimated_annual_income:          n(form.estimated_annual_income),
+        adult_dependents:                 n(form.adult_dependents),
+        child_dependents:                 nullable(form.child_dependents),
+        infant_dependents:                n(form.infant_dependents),
+        previous_policy_duration_months:  n(form.previous_policy_duration_months),
+        days_since_quote:                 n(form.days_since_quote),
+        grace_period_extensions:          n(form.grace_period_extensions),
+        custom_riders_requested:          n(form.custom_riders_requested),
+        vehicles_on_policy:               n(form.vehicles_on_policy),
+        policy_amendments_count:          n(form.policy_amendments_count),
+        previous_claims_filed:            n(form.previous_claims_filed),
+        years_without_claims:             n(form.years_without_claims),
+        underwriting_processing_days:     n(form.underwriting_processing_days),
+        region_code:                      form.region_code || null,
+        broker_agency_type:               form.broker_agency_type,
+        deductible_tier:                  form.deductible_tier,
+        acquisition_channel:              form.acquisition_channel,
+        payment_schedule:                 form.payment_schedule,
+        employment_status:                form.employment_status,
+        policy_start_month:               form.policy_start_month,
+        broker_id:                        nullable(form.broker_id),
+        employer_id:                      nullable(form.employer_id),
+      }
+
+      const data = await apiFetch<{
+        user_id: string
+        predicted_bundle: number
+        bundle_name: string
+        confidence: number
+        class_probabilities: number[]
+      }>('/api/classify/single', { method: 'POST', body: JSON.stringify(body) })
+
+      onResult({
+        predictedBundle:    data.predicted_bundle,
+        confidence:         data.confidence,
+        classProbabilities: data.class_probabilities,
+        bundleInfo:         BUNDLE_INFO[data.predicted_bundle] ?? BUNDLE_INFO[0],
+        source:             'api',
+      })
+    } catch (err: any) {
+      setError(err?.message ?? 'Prediction failed. Is the backend running?')
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -56,194 +157,179 @@ export function CustomerInputForm({ onSubmit, isLoading }: CustomerInputFormProp
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: 0.1 }}
-      className="h-full flex flex-col gap-5"
+      className="h-full flex flex-col gap-4"
     >
-      {/* Header */}
       <div>
-        <h2 className="text-base font-semibold text-foreground">Customer Profile</h2>
-        <p className="text-xs text-muted-foreground mt-0.5">Enter demographic & behavioural features for bundle prediction</p>
+        <h2 className="text-base font-semibold text-foreground">New Customer</h2>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Fill in the 22 ML features — the prediction will be saved to the database
+        </p>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-3">
-        {(['sample', 'custom'] as const).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`flex-1 py-2.5 px-4 rounded-lg font-medium text-sm transition-all ${
-              activeTab === tab
-                ? 'bg-primary/10 border border-primary/20 text-primary'
-                : 'bg-muted/50 border border-border text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {tab === 'sample' ? 'Sample Customer' : 'New Customer'}
-          </button>
-        ))}
-      </div>
+      {error && (
+        <div className="flex items-start gap-2.5 bg-destructive/10 border border-destructive/30 rounded-lg px-3.5 py-2.5 text-sm">
+          <AlertCircle className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
+          <span className="text-destructive">{error}</span>
+        </div>
+      )}
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto space-y-4">
-        {activeTab === 'sample' ? (
-          <motion.div key="sample" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-            {/* Dropdown */}
-            <div className="relative">
-              <button
-                onClick={() => setShowDropdown(!showDropdown)}
-                className="w-full bg-muted/50 border border-border hover:border-primary/50 rounded-lg px-4 py-3 text-left text-foreground flex items-center justify-between transition-colors"
-              >
-                <span className="font-medium">{selectedCustomer.name}</span>
-                <ChevronDown className="w-4 h-4 text-muted-foreground" style={{ transform: showDropdown ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
-              </button>
-              {showDropdown && (
-                <motion.div
-                  initial={{ opacity: 0, y: -8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="absolute top-full left-0 right-0 mt-2 bg-card border border-border rounded-lg overflow-hidden z-10 shadow-lg"
-                >
-                  {SAMPLE_CUSTOMERS.map((c) => (
-                    <button
-                      key={c.id}
-                      onClick={() => { setSelectedId(c.id); setShowDropdown(false) }}
-                      className="w-full text-left px-4 py-3 hover:bg-muted transition-colors border-b border-border last:border-0"
-                    >
-                      <p className="font-medium text-foreground text-sm">{c.name}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">Age {c.age} · {c.employmentStatus} · ${c.annualIncome.toLocaleString()}/yr</p>
-                    </button>
-                  ))}
-                </motion.div>
-              )}
-            </div>
+      <div className="flex-1 overflow-y-auto space-y-3.5 pr-0.5">
+        <Section label="Financial Profile">
+          <Field label="Estimated Annual Income ($)" required>
+            <input type="number" min={0} value={form.estimated_annual_income}
+              onChange={set('estimated_annual_income')} placeholder="e.g. 60000" className={INP} />
+          </Field>
+          <Row>
+            <Field label="Employment Status">
+              <select value={form.employment_status} onChange={set('employment_status')} className={SEL}>
+                {['Employed', 'Self-Employed', 'Unemployed', 'Retired'].map((o) => (
+                  <option key={o}>{o}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Employer ID">
+              <input type="number" value={form.employer_id} onChange={set('employer_id')}
+                placeholder="optional" className={INP} />
+            </Field>
+          </Row>
+        </Section>
 
-            {/* Details card */}
-            <div className="bg-muted/30 border border-border rounded-lg p-4 mt-4 space-y-2 text-sm">
-              {[
-                ['Age', selectedCustomer.age],
-                ['Gender', selectedCustomer.gender],
-                ['Marital Status', selectedCustomer.maritalStatus],
-                ['Annual Income', `$${selectedCustomer.annualIncome.toLocaleString()}`],
-                ['Employment', selectedCustomer.employmentStatus],
-                ['Dependents', selectedCustomer.numDependents],
-                ['Education', selectedCustomer.educationLevel],
-                ['Property', selectedCustomer.propertyOwnership],
-                ['Vehicle', selectedCustomer.vehicleType],
-                ['Prior Claims', selectedCustomer.priorClaimsCount],
-                ['Region', selectedCustomer.region],
-              ].map(([label, value]) => (
-                <div key={String(label)} className="flex items-center justify-between">
-                  <span className="text-muted-foreground">{label}</span>
-                  <span className="font-medium text-foreground">{String(value)}</span>
-                </div>
+        <Section label="Dependents">
+          <Row cols={3}>
+            <Field label="Adult">
+              <input type="number" min={0} value={form.adult_dependents}
+                onChange={set('adult_dependents')} className={INP} />
+            </Field>
+            <Field label="Child">
+              <input type="number" min={0} value={form.child_dependents}
+                onChange={set('child_dependents')} placeholder="–" className={INP} />
+            </Field>
+            <Field label="Infant">
+              <input type="number" min={0} value={form.infant_dependents}
+                onChange={set('infant_dependents')} className={INP} />
+            </Field>
+          </Row>
+        </Section>
+
+        <Section label="Previous Policy">
+          <Row>
+            <Field label="Duration (months)">
+              <input type="number" min={0} value={form.previous_policy_duration_months}
+                onChange={set('previous_policy_duration_months')} className={INP} />
+            </Field>
+            <Field label="Amendments">
+              <input type="number" min={0} value={form.policy_amendments_count}
+                onChange={set('policy_amendments_count')} className={INP} />
+            </Field>
+          </Row>
+          <Field label="Policy Start Month">
+            <select value={form.policy_start_month} onChange={set('policy_start_month')} className={SEL}>
+              {['January','February','March','April','May','June',
+                'July','August','September','October','November','December'].map((m) => (
+                <option key={m}>{m}</option>
               ))}
-            </div>
+            </select>
+          </Field>
+        </Section>
 
-            <button
-              onClick={handleSampleSubmit}
-              disabled={isLoading}
-              className="w-full mt-5 flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 disabled:opacity-60 text-primary-foreground font-semibold py-3 px-6 rounded-lg transition-all shadow-sm"
-            >
-              <Sparkles className="w-4 h-4" />
-              {isLoading ? 'Classifying…' : 'Predict Bundle'}
-            </button>
-          </motion.div>
-        ) : (
-          <motion.div key="custom" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
-            {/* Name */}
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1.5">Full Name *</label>
-              <input type="text" value={form.name} onChange={(e) => field('name', e.target.value)} placeholder="Enter customer name" className={FIELD_INPUT} />
-            </div>
+        <Section label="Claims History">
+          <Row cols={3}>
+            <Field label="Claims Filed">
+              <input type="number" min={0} value={form.previous_claims_filed}
+                onChange={set('previous_claims_filed')} className={INP} />
+            </Field>
+            <Field label="Yrs w/o Claims">
+              <input type="number" min={0} value={form.years_without_claims}
+                onChange={set('years_without_claims')} className={INP} />
+            </Field>
+            <Field label="Grace Ext.">
+              <input type="number" min={0} value={form.grace_period_extensions}
+                onChange={set('grace_period_extensions')} className={INP} />
+            </Field>
+          </Row>
+        </Section>
 
-            {/* Age + Gender */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1.5">Age</label>
-                <input type="number" min={18} max={90} value={form.age} onChange={(e) => field('age', Number(e.target.value))} className={FIELD_INPUT} />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1.5">Gender</label>
-                <select value={form.gender} onChange={(e) => field('gender', e.target.value as CustomerProfile['gender'])} className={FIELD_SELECT}>
-                  <option>Male</option><option>Female</option><option>Other</option>
-                </select>
-              </div>
-            </div>
+        <Section label="Coverage Preferences">
+          <Row>
+            <Field label="Vehicles on Policy">
+              <input type="number" min={0} value={form.vehicles_on_policy}
+                onChange={set('vehicles_on_policy')} className={INP} />
+            </Field>
+            <Field label="Custom Riders">
+              <input type="number" min={0} value={form.custom_riders_requested}
+                onChange={set('custom_riders_requested')} className={INP} />
+            </Field>
+          </Row>
+          <Field label="Deductible Tier">
+            <select value={form.deductible_tier} onChange={set('deductible_tier')} className={SEL}>
+              {['Tier_1', 'Tier_2', 'Tier_3', 'Tier_4_Zero_Ded'].map((t) => (
+                <option key={t}>{t}</option>
+              ))}
+            </select>
+          </Field>
+        </Section>
 
-            {/* Marital Status */}
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1.5">Marital Status</label>
-              <select value={form.maritalStatus} onChange={(e) => field('maritalStatus', e.target.value as CustomerProfile['maritalStatus'])} className={FIELD_SELECT}>
-                <option>Single</option><option>Married</option><option>Divorced</option><option>Widowed</option>
+        <Section label="Quote & Underwriting">
+          <Row>
+            <Field label="Days Since Quote">
+              <input type="number" min={0} value={form.days_since_quote}
+                onChange={set('days_since_quote')} className={INP} />
+            </Field>
+            <Field label="Underwriting Days">
+              <input type="number" min={0} value={form.underwriting_processing_days}
+                onChange={set('underwriting_processing_days')} className={INP} />
+            </Field>
+          </Row>
+        </Section>
+
+        <Section label="Agent & Region">
+          <Row>
+            <Field label="Region Code">
+              <select value={form.region_code} onChange={set('region_code')} className={SEL}>
+                {['R01', 'R02', 'R03', 'R04', 'R05', 'R06'].map((r) => (
+                  <option key={r}>{r}</option>
+                ))}
               </select>
-            </div>
-
-            {/* Annual Income */}
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1.5">Annual Income ($)</label>
-              <input type="number" min={0} value={form.annualIncome} onChange={(e) => field('annualIncome', Number(e.target.value))} placeholder="e.g. 75000" className={FIELD_INPUT} />
-            </div>
-
-            {/* Employment */}
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1.5">Employment Status</label>
-              <select value={form.employmentStatus} onChange={(e) => field('employmentStatus', e.target.value as CustomerProfile['employmentStatus'])} className={FIELD_SELECT}>
-                <option>Employed</option><option>Self-Employed</option><option>Unemployed</option><option>Retired</option>
+            </Field>
+            <Field label="Broker Agency">
+              <select value={form.broker_agency_type} onChange={set('broker_agency_type')} className={SEL}>
+                {['Independent', 'Captive', 'Direct'].map((t) => (
+                  <option key={t}>{t}</option>
+                ))}
               </select>
-            </div>
-
-            {/* Dependents */}
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1.5">Number of Dependents</label>
-              <input type="number" min={0} max={10} value={form.numDependents} onChange={(e) => field('numDependents', Number(e.target.value))} className={FIELD_INPUT} />
-            </div>
-
-            {/* Education */}
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1.5">Education Level</label>
-              <select value={form.educationLevel} onChange={(e) => field('educationLevel', e.target.value as CustomerProfile['educationLevel'])} className={FIELD_SELECT}>
-                <option>High School</option><option>{"Bachelor's"}</option><option>{"Master's"}</option><option>PhD</option>
+            </Field>
+          </Row>
+          <Row>
+            <Field label="Acquisition Channel">
+              <select value={form.acquisition_channel} onChange={set('acquisition_channel')} className={SEL}>
+                {['Online', 'Agent', 'Direct', 'Referral'].map((c) => (
+                  <option key={c}>{c}</option>
+                ))}
               </select>
-            </div>
-
-            {/* Property + Vehicle */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1.5">Property</label>
-                <select value={form.propertyOwnership} onChange={(e) => field('propertyOwnership', e.target.value as CustomerProfile['propertyOwnership'])} className={FIELD_SELECT}>
-                  <option>Renter</option><option>Homeowner</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1.5">Vehicle</label>
-                <select value={form.vehicleType} onChange={(e) => field('vehicleType', e.target.value as CustomerProfile['vehicleType'])} className={FIELD_SELECT}>
-                  <option>None</option><option>Sedan</option><option>SUV</option><option>Truck</option><option>Luxury</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Prior Claims + Region */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1.5">Prior Claims</label>
-                <input type="number" min={0} max={10} value={form.priorClaimsCount} onChange={(e) => field('priorClaimsCount', Number(e.target.value))} className={FIELD_INPUT} />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1.5">Region</label>
-                <select value={form.region} onChange={(e) => field('region', e.target.value as CustomerProfile['region'])} className={FIELD_SELECT}>
-                  <option>North</option><option>South</option><option>East</option><option>West</option>
-                </select>
-              </div>
-            </div>
-
-            <button
-              onClick={handleCustomSubmit}
-              disabled={isLoading || !form.name.trim()}
-              className="w-full mt-3 flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 disabled:opacity-60 text-primary-foreground font-semibold py-3 px-6 rounded-lg transition-all shadow-sm"
-            >
-              <Sparkles className="w-4 h-4" />
-              {isLoading ? 'Classifying…' : 'Predict Bundle'}
-            </button>
-          </motion.div>
-        )}
+            </Field>
+            <Field label="Payment Schedule">
+              <select value={form.payment_schedule} onChange={set('payment_schedule')} className={SEL}>
+                {['Monthly', 'Quarterly', 'Semi-Annual', 'Annual'].map((s) => (
+                  <option key={s}>{s}</option>
+                ))}
+              </select>
+            </Field>
+          </Row>
+          <Field label="Broker ID">
+            <input type="number" value={form.broker_id} onChange={set('broker_id')}
+              placeholder="optional" className={INP} />
+          </Field>
+        </Section>
       </div>
+
+      <button
+        onClick={handleSubmit}
+        disabled={isLoading || !form.estimated_annual_income}
+        className="w-full flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 disabled:opacity-60 text-primary-foreground font-semibold py-3 px-6 rounded-lg transition-all shadow-sm"
+      >
+        <Sparkles className="w-4 h-4" />
+        {isLoading ? 'Classifying…' : 'Predict & Save Client'}
+      </button>
     </motion.div>
   )
 }

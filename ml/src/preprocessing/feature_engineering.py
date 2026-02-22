@@ -29,13 +29,27 @@ ID_COL = "User_ID"
 # ── Individual transforms ─────────────────────────────────────────────────────
 
 def fill_missing_values(df: pd.DataFrame) -> pd.DataFrame:
-    """Fill known nullable columns with sensible defaults."""
+    """Fill known nullable columns with sensible defaults.
+
+    Uses pd.to_numeric to coerce any Python-None / object-dtype values
+    to float before filling, so downstream arithmetic stays numeric.
+    """
     df = df.copy()
-    df["Child_Dependents"] = df["Child_Dependents"].fillna(0)
-    df["Has_Broker"]       = df["Broker_ID"].notna().astype(int)
-    df["Has_Employer"]     = df["Employer_ID"].notna().astype(int)
-    df["Broker_ID"]        = df["Broker_ID"].fillna(-1)
-    df["Employer_ID"]      = df["Employer_ID"].fillna(-1)
+    # Coerce to numeric first (None -> NaN), then fill
+    df["Child_Dependents"] = pd.to_numeric(df["Child_Dependents"], errors="coerce").fillna(0).astype(float)
+    df["Has_Broker"]       = df["Broker_ID"].apply(lambda x: 0 if (x is None or (isinstance(x, float) and np.isnan(x))) else 1).astype(int)
+    df["Has_Employer"]     = df["Employer_ID"].apply(lambda x: 0 if (x is None or (isinstance(x, float) and np.isnan(x))) else 1).astype(int)
+    df["Broker_ID"]        = pd.to_numeric(df["Broker_ID"],   errors="coerce").fillna(-1).astype(float)
+    df["Employer_ID"]      = pd.to_numeric(df["Employer_ID"], errors="coerce").fillna(-1).astype(float)
+    # Ensure all remaining numeric-ish columns are not object dtype
+    for col in ["Adult_Dependents", "Infant_Dependents", "Estimated_Annual_Income",
+                "Previous_Policy_Duration_Months", "Days_Since_Quote",
+                "Grace_Period_Extensions", "Custom_Riders_Requested",
+                "Vehicles_on_Policy", "Policy_Amendments_Count",
+                "Previous_Claims_Filed", "Years_Without_Claims",
+                "Underwriting_Processing_Days"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
     return df
 
 
@@ -52,13 +66,28 @@ def build_dependent_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+# Fixed income bins derived from training-data percentiles (robustly handles single-row inference)
+_INCOME_BINS = [0, 20000, 35000, 50000, 65000, 82000, 102000, 130000, 175000, 260000, float("inf")]
+
+
 def build_income_features(df: pd.DataFrame) -> pd.DataFrame:
     """Income & wealth-proxy features."""
     df = df.copy()
     df["Income_Per_Family"] = df["Estimated_Annual_Income"] / df["Family_Size"]
-    df["Income_Bracket"]    = pd.qcut(
-        df["Estimated_Annual_Income"], q=10, labels=False, duplicates="drop"
-    )
+    if len(df) >= 10:
+        # Enough rows: use quantile-based cut (mirrors training behaviour)
+        df["Income_Bracket"] = pd.qcut(
+            df["Estimated_Annual_Income"], q=10, labels=False, duplicates="drop"
+        ).astype(float)
+    else:
+        # Single-row / small batch: fall back to fixed bins so no ValueError
+        df["Income_Bracket"] = pd.cut(
+            df["Estimated_Annual_Income"],
+            bins=_INCOME_BINS,
+            labels=False,
+            right=True,
+            include_lowest=True,
+        ).astype(float)
     return df
 
 

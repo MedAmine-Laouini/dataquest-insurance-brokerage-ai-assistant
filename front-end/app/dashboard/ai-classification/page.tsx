@@ -3,7 +3,7 @@
 import React, { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { User, Upload } from 'lucide-react'
-import { CustomerProfile, PredictionResult, predictBundle } from '@/lib/classification-data'
+import { PredictionResult } from '@/lib/classification-data'
 import { CustomerInputForm } from '@/components/classification/customer-input-form'
 import { PredictionResultPanel } from '@/components/classification/prediction-result-panel'
 import { BatchUploadPanel } from '@/components/classification/batch-upload-panel'
@@ -13,21 +13,10 @@ type Mode = 'single' | 'batch'
 export default function AIClassificationPage() {
   const [mode, setMode] = useState<Mode>('single')
   const [result, setResult] = useState<PredictionResult | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
-
-  const handleSubmit = async (customer: CustomerProfile) => {
-    setIsLoading(true)
-    await new Promise((resolve) => setTimeout(resolve, 900))
-    setResult(predictBundle(customer))
-    setIsLoading(false)
-  }
 
   const handleModeChange = (m: Mode) => {
     setMode(m)
-    if (m === 'single') {
-      setResult(null)
-      setIsLoading(false)
-    }
+    if (m === 'single') setResult(null)
   }
 
   return (
@@ -91,7 +80,7 @@ export default function AIClassificationPage() {
           >
             {/* Left – Customer input (40%) */}
             <div className="lg:col-span-2 bg-card border border-border rounded-xl p-6 overflow-hidden flex flex-col">
-              <CustomerInputForm onSubmit={handleSubmit} isLoading={isLoading} />
+              <CustomerInputForm onResult={setResult} />
             </div>
 
             {/* Right – Prediction output (60%) */}
@@ -101,7 +90,7 @@ export default function AIClassificationPage() {
                 <p className="text-xs text-muted-foreground mt-0.5">Predicted bundle with class probabilities and model confidence</p>
               </div>
               <div className="flex-1 min-h-0 overflow-y-auto">
-                <PredictionResultPanel result={result} isLoading={isLoading} />
+                <PredictionResultPanel result={result} />
               </div>
             </div>
           </motion.div>

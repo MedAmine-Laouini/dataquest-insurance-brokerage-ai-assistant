@@ -1,149 +1,102 @@
-"""
-validation.py
--------------
-Schema and data-quality checks run BEFORE feature engineering.
-Raises clear errors early so failures are caught at the pipeline boundary.
+﻿"""
+predictor.py
+------------
+Model loading and prediction utilities for the Coverage Bundle classifier.
 """
 
-import pandas as pd
-import numpy as np
-from dataclasses import dataclass, field
-from typing import List, Optional
 import logging
+import os
+from pathlib import Path
+
+import joblib
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-
-# ── Expected schema ───────────────────────────────────────────────────────────
-
-REQUIRED_COLUMNS = [
-    "User_ID",
-    "Estimated_Annual_Income",
-    "Adult_Dependents",
-    "Child_Dependents",
-    "Infant_Dependents",
-    "Previous_Policy_Duration_Months",
-    "Days_Since_Quote",
-    "Grace_Period_Extensions",
-    "Custom_Riders_Requested",
-    "Vehicles_on_Policy",
-    "Policy_Amendments_Count",
-    "Previous_Claims_Filed",
-    "Years_Without_Claims",
-    "Underwriting_Processing_Days",
-    "Region_Code",
-    "Broker_Agency_Type",
-    "Deductible_Tier",
-    "Acquisition_Channel",
-    "Payment_Schedule",
-    "Employment_Status",
-    "Policy_Start_Month",
-    "Broker_ID",
-    "Employer_ID",
-]
-
-NUMERIC_NON_NEGATIVE = [
-    "Estimated_Annual_Income",
-    "Adult_Dependents",
-    "Child_Dependents",
-    "Infant_Dependents",
-    "Previous_Policy_Duration_Months",
-    "Days_Since_Quote",
-    "Grace_Period_Extensions",
-    "Custom_Riders_Requested",
-    "Vehicles_on_Policy",
-    "Policy_Amendments_Count",
-    "Previous_Claims_Filed",
-    "Years_Without_Claims",
-    "Underwriting_Processing_Days",
-]
+# Default model path — resolved relative to this file's location:
+# predictor.py is at  ml/src/model/predictor.py
+# model.joblib is at  front-end/src/model.joblib  (4 levels up, then into front-end/src/)
+_HERE = Path(__file__).resolve().parent
+_DEFAULT_MODEL_PATH = _HERE.parent.parent.parent / "front-end" / "src" / "model.joblib"
 
 
-# ── Result dataclass ──────────────────────────────────────────────────────────
+def load_model(model_path: str | Path | None = None):
+    """Load and return the trained sklearn model from *model_path*.
 
-@dataclass
-class ValidationReport:
-    passed: bool = True
-    errors: List[str] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
-
-    def add_error(self, msg: str):
-        self.errors.append(msg)
-        self.passed = False
-
-    def add_warning(self, msg: str):
-        self.warnings.append(msg)
-
-    def summary(self) -> str:
-        lines = [f"Validation {'PASSED' if self.passed else 'FAILED'}"]
-        for e in self.errors:
-            lines.append(f"  [ERROR]   {e}")
-        for w in self.warnings:
-            lines.append(f"  [WARN]    {w}")
-        return "\n".join(lines)
-
-
-# ── Checks ────────────────────────────────────────────────────────────────────
-
-def check_required_columns(df: pd.DataFrame, report: ValidationReport):
-    missing = [c for c in REQUIRED_COLUMNS if c not in df.columns]
-    if missing:
-        report.add_error(f"Missing required columns: {missing}")
-
-
-def check_empty_dataframe(df: pd.DataFrame, report: ValidationReport):
-    if len(df) == 0:
-        report.add_error("DataFrame is empty (0 rows).")
-
-
-def check_duplicate_user_ids(df: pd.DataFrame, report: ValidationReport):
-    if "User_ID" not in df.columns:
-        return
-    dupes = df["User_ID"].duplicated().sum()
-    if dupes > 0:
-        report.add_warning(f"{dupes} duplicate User_ID values detected.")
-
-
-def check_non_negative_numerics(df: pd.DataFrame, report: ValidationReport):
-    for col in NUMERIC_NON_NEGATIVE:
-        if col not in df.columns:
-            continue
-        neg_count = (df[col] < 0).sum()
-        if neg_count > 0:
-            report.add_warning(f"Column '{col}' has {neg_count} negative values.")
-
-
-def check_null_rates(df: pd.DataFrame, report: ValidationReport, threshold: float = 0.5):
-    """Warn if any column has > threshold null rate (excluding known nullable cols)."""
-    known_nullable = {"Broker_ID", "Employer_ID", "Child_Dependents", "Region_Code"}
-    for col in df.columns:
-        if col in known_nullable:
-            continue
-        null_rate = df[col].isna().mean()
-        if null_rate > threshold:
-            report.add_warning(
-                f"Column '{col}' has {null_rate:.1%} null values (threshold={threshold:.0%})."
-            )
-
-
-# ── Master validator ──────────────────────────────────────────────────────────
-
-def validate(df: pd.DataFrame, raise_on_error: bool = True) -> ValidationReport:
+    Falls back to the environment variable MODEL_PATH, then to the
+    default computed relative to this file.
     """
-    Run all validation checks.
-    If raise_on_error=True (default), raises ValueError on any ERROR-level finding.
+    path = Path(
+        model_path
+        or os.environ.get("MODEL_PATH", "")
+        or _DEFAULT_MODEL_PATH
+    )
+    if not path.exists():
+        raise FileNotFoundError(f"Model file not found: {path}")
+    logger.info("Loading model from %s", path)
+    model = joblib.load(path)
+    logger.info("Model loaded: %s", type(model).__name__)
+    return model
+
+
+def predict(df_features: pd.DataFrame, model) -> pd.DataFrame:
+    """Run inference and return a DataFrame with User_ID + predictions.
+
+    Parameters
+    ----------
+    df_features : pd.DataFrame
+        Fully engineered feature matrix (output of preprocess()).
+        Must contain User_ID.  All other columns are used as features.
+    model :
+        Fitted sklearn estimator.
+
+    Returns
+    -------
+    pd.DataFrame with columns:
+        - User_ID
+        - Predicted_Bundle  (int label)
+        - prob_<i>          (float, one per class, if predict_proba available)
     """
-    report = ValidationReport()
+    id_col = "User_ID"
+    drop_cols = [c for c in [id_col, "Purchased_Coverage_Bundle"] if c in df_features.columns]
+    X = df_features.drop(columns=drop_cols)
 
-    check_empty_dataframe(df, report)
-    check_required_columns(df, report)
-    check_duplicate_user_ids(df, report)
-    check_non_negative_numerics(df, report)
-    check_null_rates(df, report)
+    # Exact feature order the model was trained on (from XGBoost booster).
+    # Hardcoded because sklearn Pipeline doesn't expose feature_names_in_
+    # and traversing to the inner booster is fragile.
+    MODEL_FEATURE_ORDER = [
+        "Policy_Cancelled_Post_Purchase", "Policy_Start_Year", "Policy_Start_Week",
+        "Policy_Start_Day", "Grace_Period_Extensions", "Previous_Policy_Duration_Months",
+        "Adult_Dependents", "Child_Dependents", "Infant_Dependents", "Region_Code",
+        "Existing_Policyholder", "Previous_Claims_Filed", "Years_Without_Claims",
+        "Policy_Amendments_Count", "Broker_ID", "Employer_ID",
+        "Underwriting_Processing_Days", "Vehicles_on_Policy", "Custom_Riders_Requested",
+        "Broker_Agency_Type", "Deductible_Tier", "Acquisition_Channel",
+        "Payment_Schedule", "Employment_Status", "Estimated_Annual_Income",
+        "Days_Since_Quote", "Policy_Start_Month", "Has_Broker", "Has_Employer",
+        "Total_Dependents", "Has_Children", "Family_Size", "Income_Per_Family",
+        "Income_Bracket", "Is_New_Policy", "Duration_Bucket", "Quick_Purchase",
+        "Delayed_Purchase", "Quote_Delay_Bucket", "Grace_X_Duration",
+        "Riders_Plus_Vehicles", "Amendments_X_Duration", "Has_Claims",
+        "Claims_Per_Year", "Has_Riders", "Has_Vehicles", "Has_Amendments",
+        "Has_Grace_Ext", "Long_Underwriting", "rule_renter_premium",
+        "Broker_ID_freq", "Employer_ID_freq",
+    ]
 
-    logger.info(report.summary())
+    # Add any missing columns as 0, then reorder to training order
+    for col in MODEL_FEATURE_ORDER:
+        if col not in X.columns:
+            X[col] = 0
+    # Keep only model columns in the exact expected order
+    X = X[[c for c in MODEL_FEATURE_ORDER if c in X.columns]]
 
-    if not report.passed and raise_on_error:
-        raise ValueError(f"Data validation failed:\n{report.summary()}")
+    preds = model.predict(X)
+    out = pd.DataFrame({id_col: df_features[id_col].values, "Predicted_Bundle": preds})
 
-    return report
+    if hasattr(model, "predict_proba"):
+        proba = model.predict_proba(X)
+        for i in range(proba.shape[1]):
+            out[f"prob_{i}"] = proba[:, i]
+
+    logger.info("Predictions complete | rows=%d", len(out))
+    return out

@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import engine, Base
-from app.routers import auth, clients, dashboard, data
+from app.routers import auth, clients, dashboard, data, classify
 
 
 @asynccontextmanager
@@ -35,6 +35,7 @@ app.include_router(auth.router)
 app.include_router(clients.router)
 app.include_router(dashboard.router)
 app.include_router(data.router)
+app.include_router(classify.router)
 
 
 @app.get("/")

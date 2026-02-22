@@ -16,73 +16,51 @@ import {
   AlertCircle,
 } from 'lucide-react'
 import { BUNDLE_INFO, PredictionResult } from '@/lib/classification-data'
+import { getApiUrl, getAuthHeaders } from '@/lib/api'
 import { PredictionResultPanel } from './prediction-result-panel'
 
-// ─── Dummy batch results ───────────────────────────────────────────────────────
+// ─── Batch row (prediction result per CSV row) ────────────────────────────────
 
 interface BatchRow {
   rowIndex: number
   userId: string
-  name: string
-  age: number
-  region: string
-  income: number
-  employment: string
   result: PredictionResult
 }
 
-const makeDummy = (
-  rowIndex: number,
-  userId: string,
-  name: string,
-  age: number,
-  region: string,
-  income: number,
-  employment: string,
-  bundleId: number,
-  confidence: number
-): BatchRow => {
-  const probs = Array(10).fill(0) as number[]
-  probs[bundleId] = confidence
-  let remaining = 100 - confidence
-  const others = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].filter((i) => i !== bundleId)
-  others.forEach((i, idx) => {
-    const share = idx === others.length - 1 ? remaining : Math.floor(remaining / (others.length - idx))
-    probs[i] = share
-    remaining -= share
+// ─── Upload helper (multipart, with auth token) ───────────────────────────────
+
+async function uploadCSV(file: File): Promise<BatchRow[]> {
+  const fd = new FormData()
+  fd.append('file', file)
+  const headers = { ...getAuthHeaders() }
+  // Remove Content-Type so the browser sets the correct multipart boundary
+  delete (headers as Record<string, string>)['Content-Type']
+
+  const res = await fetch(getApiUrl('/api/classify/batch'), {
+    method: 'POST',
+    headers,
+    body: fd,
   })
-
-  return {
-    rowIndex,
-    userId,
-    name,
-    age,
-    region,
-    income,
-    employment,
-    result: {
-      predictedBundle: bundleId,
-      confidence,
-      classProbabilities: probs,
-      bundleInfo: BUNDLE_INFO[bundleId],
-    },
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error((err as any).detail || `Server error ${res.status}`)
   }
+  const data: { count: number; results: Array<{
+    user_id: string; predicted_bundle: number; bundle_name: string
+    confidence: number; class_probabilities: number[]
+  }> } = await res.json()
+  return data.results.map((r, i) => ({
+    rowIndex: i + 1,
+    userId:   r.user_id,
+    result: {
+      predictedBundle:    r.predicted_bundle,
+      confidence:         r.confidence,
+      classProbabilities: r.class_probabilities,
+      bundleInfo:         BUNDLE_INFO[r.predicted_bundle] ?? BUNDLE_INFO[0],
+      source:             'api' as const,
+    },
+  }))
 }
-
-const DUMMY_BATCH: BatchRow[] = [
-  makeDummy(1,  'USR_001', 'Alex Rivera',      28, 'West',  48000,  'Employed',      1, 72),
-  makeDummy(2,  'USR_002', 'Sarah Chen',        38, 'East',  112000, 'Employed',      5, 84),
-  makeDummy(3,  'USR_003', 'Marcus Johnson',    52, 'South', 240000, 'Self-Employed', 7, 91),
-  makeDummy(4,  'USR_004', 'Priya Patel',       44, 'North', 78000,  'Employed',      3, 67),
-  makeDummy(5,  'USR_005', 'Elena Rodriguez',   31, 'East',  62000,  'Employed',      2, 78),
-  makeDummy(6,  'USR_006', 'James O\'Brien',    59, 'South', 185000, 'Retired',       7, 88),
-  makeDummy(7,  'USR_007', 'Yuki Tanaka',       26, 'West',  41000,  'Employed',      0, 65),
-  makeDummy(8,  'USR_008', 'Fatima Al-Rashidi', 47, 'North', 98000,  'Self-Employed', 6, 76),
-  makeDummy(9,  'USR_009', 'Daniel Park',       35, 'East',  130000, 'Employed',      5, 82),
-  makeDummy(10, 'USR_010', 'Amara Osei',        41, 'South', 67000,  'Employed',      4, 71),
-  makeDummy(11, 'USR_011', 'Lucas Ferreira',    29, 'West',  55000,  'Employed',      1, 69),
-  makeDummy(12, 'USR_012', 'Isabelle Dupont',   63, 'North', 320000, 'Retired',       9, 79),
-]
 
 // ─── Tier badge helper ─────────────────────────────────────────────────────────
 
@@ -99,29 +77,38 @@ const CONF_BAR = (c: number) =>
 const CONF_TEXT = (c: number) =>
   c >= 80 ? 'text-emerald-500' : c >= 65 ? 'text-amber-500' : 'text-rose-500'
 
-// ─── Summary stats ─────────────────────────────────────────────────────────────
+// ─── Summary stats helper ────────────────────────────────────────────────────
 
-const avgConf = Math.round(DUMMY_BATCH.reduce((a, b) => a + b.result.confidence, 0) / DUMMY_BATCH.length)
-const bundleDist = DUMMY_BATCH.reduce<Record<number, number>>((acc, r) => {
-  acc[r.result.predictedBundle] = (acc[r.result.predictedBundle] ?? 0) + 1
-  return acc
-}, {})
-const topBundle = BUNDLE_INFO[Number(Object.entries(bundleDist).sort((a, b) => b[1] - a[1])[0][0])]
+function computeStats(rows: BatchRow[]) {
+  if (!rows.length) return { avgConf: 0, topBundle: BUNDLE_INFO[0] }
+  const avgConf = Math.round(rows.reduce((a, b) => a + b.result.confidence, 0) / rows.length)
+  const dist = rows.reduce<Record<number, number>>((acc, r) => {
+    acc[r.result.predictedBundle] = (acc[r.result.predictedBundle] ?? 0) + 1
+    return acc
+  }, {})
+  const topBundle = BUNDLE_INFO[Number(Object.entries(dist).sort((a, b) => b[1] - a[1])[0][0])]
+  return { avgConf, topBundle }
+}
 
-// ─── Component ─────────────────────────────────────────────────────────────────
+// ─── Component ───────────────────────────────────────────────────────────────
 
 export function BatchUploadPanel() {
-  const [fileState, setFileState] = useState<'idle' | 'ready' | 'processed'>('idle')
+  const [fileState, setFileState] = useState<'idle' | 'ready' | 'running' | 'processed'>('idle')
   const [fileName, setFileName] = useState('')
+  const [fileObj, setFileObj] = useState<File | null>(null)
   const [isDragging, setIsDragging] = useState(false)
+  const [batchRows, setBatchRows] = useState<BatchRow[]>([])
   const [selectedRow, setSelectedRow] = useState<BatchRow | null>(null)
+  const [runError, setRunError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const handleFilePick = (file: File | undefined) => {
     if (!file) return
     setFileName(file.name)
+    setFileObj(file)
     setFileState('ready')
     setSelectedRow(null)
+    setRunError(null)
   }
 
   const handleDrop = (e: React.DragEvent) => {
@@ -130,19 +117,32 @@ export function BatchUploadPanel() {
     handleFilePick(e.dataTransfer.files[0])
   }
 
-  const handleRunBatch = () => {
-    setFileState('processed')
-    setSelectedRow(DUMMY_BATCH[0])
+  const handleRunBatch = async () => {
+    if (!fileObj) return
+    setFileState('running')
+    setRunError(null)
+    try {
+      const rows = await uploadCSV(fileObj)
+      setBatchRows(rows)
+      setFileState('processed')
+      setSelectedRow(rows[0] ?? null)
+    } catch (err: any) {
+      setRunError(err?.message ?? 'Batch prediction failed')
+      setFileState('ready')
+    }
   }
 
   const handleClear = () => {
     setFileState('idle')
     setFileName('')
+    setFileObj(null)
+    setBatchRows([])
     setSelectedRow(null)
+    setRunError(null)
     if (inputRef.current) inputRef.current.value = ''
   }
 
-  // ── IDLE / READY: upload zone ────────────────────────────────────────────────
+  // ── IDLE / READY / RUNNING: upload zone ────────────────────────────────────
   if (fileState !== 'processed') {
     return (
       <motion.div
@@ -187,7 +187,12 @@ export function BatchUploadPanel() {
                 <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
                 {fileName}
               </p>
-              <p className="text-xs text-muted-foreground mt-1">File ready — click "Run Batch" to process predictions</p>
+              <p className="text-xs text-muted-foreground mt-1">File ready — click “Run Batch” to send through the ML pipeline</p>
+            </div>
+          ) : fileState === 'running' ? (
+            <div className="text-center">
+              <p className="text-sm font-semibold text-foreground">Running ML pipeline…</p>
+              <p className="text-xs text-muted-foreground mt-1">Sending data to the classifier, please wait</p>
             </div>
           ) : (
             <div className="text-center">
@@ -210,7 +215,12 @@ export function BatchUploadPanel() {
         <div className="w-full max-w-xl bg-muted/40 border border-border rounded-xl p-4">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Expected CSV columns</p>
           <div className="flex flex-wrap gap-2">
-            {['User_ID','Age','Gender','Marital_Status','Annual_Income','Employment_Status','Num_Dependents','Education_Level','Property_Ownership','Vehicle_Type','Prior_Claims','Region'].map(col => (
+            {['User_ID','Estimated_Annual_Income','Adult_Dependents','Child_Dependents','Infant_Dependents',
+            'Previous_Policy_Duration_Months','Days_Since_Quote','Grace_Period_Extensions','Custom_Riders_Requested',
+            'Vehicles_on_Policy','Policy_Amendments_Count','Previous_Claims_Filed','Years_Without_Claims',
+            'Underwriting_Processing_Days','Region_Code','Broker_Agency_Type','Deductible_Tier',
+            'Acquisition_Channel','Payment_Schedule','Employment_Status','Policy_Start_Month',
+            'Broker_ID','Employer_ID'].map(col => (
               <span key={col} className="font-mono text-xs bg-card border border-border rounded px-2 py-1 text-foreground/70">{col}</span>
             ))}
           </div>
@@ -222,17 +232,27 @@ export function BatchUploadPanel() {
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
             onClick={handleRunBatch}
-            className="flex items-center gap-2 px-8 py-3 bg-primary text-primary-foreground rounded-xl font-semibold text-sm hover:opacity-90 transition-all shadow-lg shadow-primary/20"
+            disabled={fileState === 'running' as any}
+            className="flex items-center gap-2 px-8 py-3 bg-primary text-primary-foreground rounded-xl font-semibold text-sm hover:opacity-90 transition-all shadow-lg shadow-primary/20 disabled:opacity-60"
           >
             <Brain className="w-4 h-4" />
             Run Batch Classification
           </motion.button>
         )}
+
+        {runError && (
+          <div className="w-full max-w-xl flex items-start gap-2.5 bg-destructive/10 border border-destructive/30 rounded-lg px-3.5 py-2.5 text-sm">
+            <AlertCircle className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
+            <span className="text-destructive">{runError}</span>
+          </div>
+        )}
       </motion.div>
     )
   }
 
-  // ── PROCESSED: master-detail ─────────────────────────────────────────────────
+  const { avgConf, topBundle } = computeStats(batchRows)
+
+  // ── PROCESSED: master-detail ───────────────────────────────────────
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -248,7 +268,7 @@ export function BatchUploadPanel() {
           </div>
           <div>
             <p className="text-sm font-semibold text-foreground">{fileName}</p>
-            <p className="text-xs text-muted-foreground">{DUMMY_BATCH.length} rows processed · batch complete</p>
+            <p className="text-xs text-muted-foreground">{batchRows.length} rows processed · batch complete</p>
           </div>
         </div>
 
@@ -257,7 +277,7 @@ export function BatchUploadPanel() {
           <div className="flex items-center gap-4 text-xs">
             <div className="flex items-center gap-1.5 text-muted-foreground">
               <Users className="w-3.5 h-3.5" />
-              <span className="font-medium text-foreground">{DUMMY_BATCH.length}</span> customers
+              <span className="font-medium text-foreground">{batchRows.length}</span> customers
             </div>
             <div className="flex items-center gap-1.5 text-muted-foreground">
               <TrendingUp className="w-3.5 h-3.5" />
@@ -286,12 +306,12 @@ export function BatchUploadPanel() {
           <div className="px-4 py-3 border-b border-border flex-shrink-0">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-foreground">Batch Results</h3>
-              <span className="text-xs text-muted-foreground bg-muted/50 rounded-full px-2 py-0.5">{DUMMY_BATCH.length} rows</span>
+              <span className="text-xs text-muted-foreground bg-muted/50 rounded-full px-2 py-0.5">{batchRows.length} rows</span>
             </div>
           </div>
 
           <div className="overflow-y-auto flex-1">
-            {DUMMY_BATCH.map((row) => {
+            {batchRows.map((row) => {
               const isSelected = selectedRow?.rowIndex === row.rowIndex
               return (
                 <button
@@ -305,7 +325,7 @@ export function BatchUploadPanel() {
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2 mb-1">
-                      <p className="text-sm font-medium text-foreground truncate">{row.name}</p>
+                      <p className="text-sm font-medium text-foreground truncate font-mono">{row.userId}</p>
                       <span className={`flex-shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full border ${TIER_STYLE[row.result.bundleInfo.tier]}`}>
                         {row.result.bundleInfo.tier}
                       </span>
@@ -343,7 +363,7 @@ export function BatchUploadPanel() {
               {selectedRow && (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <BarChart3 className="w-3.5 h-3.5" />
-                  <span>{selectedRow.name} · Row #{selectedRow.rowIndex}</span>
+                  <span>{selectedRow.userId} · Row #{selectedRow.rowIndex}</span>
                 </div>
               )}
             </div>
@@ -361,12 +381,10 @@ export function BatchUploadPanel() {
                   className="h-full flex flex-col gap-5"
                 >
                   {/* Customer metadata strip */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 gap-3">
                     {[
                       { label: 'User ID',    value: selectedRow.userId },
-                      { label: 'Age',        value: String(selectedRow.age) },
-                      { label: 'Region',     value: selectedRow.region },
-                      { label: 'Income',     value: `$${selectedRow.income.toLocaleString()}` },
+                      { label: 'Bundle',     value: selectedRow.result.bundleInfo.name },
                     ].map(({ label, value }) => (
                       <div key={label} className="bg-muted/30 border border-border/60 rounded-lg px-3 py-2.5">
                         <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">{label}</p>

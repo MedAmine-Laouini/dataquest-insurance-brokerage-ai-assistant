@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr
-from typing import Optional
+from typing import Optional, List
 
 
 # ──────────────────── Auth Schemas ────────────────────
@@ -93,3 +93,45 @@ class DashboardStats(BaseModel):
     monthly_distribution: dict
     channel_distribution: dict
     deductible_distribution: dict
+
+
+# ──────────────────── Classification / Prediction Schemas ────────────────────
+
+class ClientPredictInput(BaseModel):
+    """All 22 columns the ML pipeline requires for inference."""
+    user_id: Optional[str] = None
+    estimated_annual_income: float
+    adult_dependents: int = 0
+    child_dependents: Optional[float] = None
+    infant_dependents: int = 0
+    previous_policy_duration_months: int = 0
+    days_since_quote: int = 30
+    grace_period_extensions: int = 0
+    custom_riders_requested: int = 0
+    vehicles_on_policy: int = 0
+    policy_amendments_count: int = 0
+    previous_claims_filed: int = 0
+    years_without_claims: int = 0
+    underwriting_processing_days: int = 5
+    region_code: Optional[str] = None
+    broker_agency_type: str = "Independent"
+    deductible_tier: str = "Tier_2"
+    acquisition_channel: str = "Online"
+    payment_schedule: str = "Monthly"
+    employment_status: str = "Employed"
+    policy_start_month: str = "January"
+    broker_id: Optional[float] = None
+    employer_id: Optional[float] = None
+
+
+class PredictionOut(BaseModel):
+    user_id: str
+    predicted_bundle: int
+    bundle_name: str
+    confidence: int
+    class_probabilities: List[int]
+
+
+class BatchPredictionOut(BaseModel):
+    count: int
+    results: List[PredictionOut]
