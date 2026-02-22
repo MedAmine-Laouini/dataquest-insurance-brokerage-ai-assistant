@@ -8,3 +8,20 @@ node_modules/
 .next/
 .env*.local
 .DS_Store
+
+# Environment files
+.env
+.env.production
+
+# Build artifacts
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
