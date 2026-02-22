@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { motion } from 'framer-motion'
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend } from 'recharts'
+import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts'
 
 const data = [
   { name: 'Business Liability', value: 28 },
@@ -11,7 +11,7 @@ const data = [
   { name: 'Auto', value: 19 },
 ]
 
-const COLORS = ['var(--primary)', 'var(--accent)', '#10b981', '#f59e0b']
+const COLORS = ['var(--chart-1)', 'var(--chart-2)', '#10b981', '#f59e0b']
 
 export function PolicyBreakdown() {
   return (
@@ -42,10 +42,23 @@ export function PolicyBreakdown() {
               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
             ))}
           </Pie>
+          <Tooltip
+            contentStyle={{
+              backgroundColor: 'var(--card)',
+              border: '1px solid var(--border)',
+              borderRadius: '8px',
+              color: 'var(--foreground)',
+            }}
+            labelStyle={{ color: 'var(--foreground)' }}
+            itemStyle={{ color: 'var(--foreground)' }}
+          />
           <Legend
             verticalAlign="bottom"
             height={36}
-            wrapperStyle={{ paddingTop: '20px', fontSize: '12px' }}
+            formatter={(value) => (
+              <span style={{ color: 'var(--foreground)', fontSize: '12px' }}>{value}</span>
+            )}
+            wrapperStyle={{ paddingTop: '20px' }}
           />
         </PieChart>
       </ResponsiveContainer>

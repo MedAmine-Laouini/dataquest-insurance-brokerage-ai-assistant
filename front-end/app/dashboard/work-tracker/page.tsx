@@ -49,7 +49,7 @@ const policyTypesData = [
   { name: 'Property', value: 15 },
 ]
 
-const COLORS = ['var(--primary)', 'var(--accent)', '#10b981', '#f59e0b']
+const COLORS = ['var(--chart-1)', 'var(--chart-2)', '#10b981', '#f59e0b']
 
 export default function WorkTrackerPage() {
   return (
@@ -130,15 +130,16 @@ export default function WorkTrackerPage() {
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={monthlyData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis dataKey="name" stroke="var(--muted-foreground)" style={{ fontSize: '12px' }} />
-                <YAxis stroke="var(--muted-foreground)" style={{ fontSize: '12px' }} />
+                <XAxis dataKey="name" stroke="var(--border)" tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }} />
+                <YAxis stroke="var(--border)" tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }} />
                 <Tooltip
-                  contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '8px' }}
+                  contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--foreground)' }}
                   labelStyle={{ color: 'var(--foreground)' }}
+                  itemStyle={{ color: 'var(--foreground)' }}
                 />
-                <Legend />
-                <Line type="monotone" dataKey="cases" name="Total Cases" stroke="var(--custom-chart-1, hsl(var(--chart-1)))" strokeWidth={2} />
-                <Line type="monotone" dataKey="converted" name="Converted" stroke="var(--primary)" strokeWidth={2} />
+                <Legend formatter={(value) => <span style={{ color: 'var(--foreground)', fontSize: '12px' }}>{value}</span>} />
+                <Line type="monotone" dataKey="cases" name="Total Cases" stroke="var(--chart-1)" strokeWidth={2} />
+                <Line type="monotone" dataKey="converted" name="Converted" stroke="var(--chart-2)" strokeWidth={2} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -150,13 +151,14 @@ export default function WorkTrackerPage() {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={statusData} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis type="number" stroke="var(--muted-foreground)" style={{ fontSize: '12px' }} />
-                <YAxis dataKey="name" type="category" stroke="var(--muted-foreground)" style={{ fontSize: '12px' }} width={80} />
+                <XAxis type="number" stroke="var(--border)" tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }} />
+                <YAxis dataKey="name" type="category" stroke="var(--border)" tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }} width={80} />
                 <Tooltip
-                  contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '8px' }}
+                  contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--foreground)' }}
                   labelStyle={{ color: 'var(--foreground)' }}
+                  itemStyle={{ color: 'var(--foreground)' }}
                 />
-                <Bar dataKey="value" name="Cases" fill="var(--accent)" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="value" name="Cases" fill="var(--chart-2)" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -182,10 +184,16 @@ export default function WorkTrackerPage() {
                   ))}
                 </Pie>
                 <Tooltip
-                  contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '8px' }}
+                  contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--foreground)' }}
                   labelStyle={{ color: 'var(--foreground)' }}
+                  itemStyle={{ color: 'var(--foreground)' }}
                 />
-                <Legend verticalAlign="bottom" height={36} wrapperStyle={{ paddingTop: '20px' }} />
+                <Legend
+                  verticalAlign="bottom"
+                  height={36}
+                  formatter={(value) => <span style={{ color: 'var(--foreground)', fontSize: '12px' }}>{value}</span>}
+                  wrapperStyle={{ paddingTop: '20px' }}
+                />
               </PieChart>
             </ResponsiveContainer>
           </div>

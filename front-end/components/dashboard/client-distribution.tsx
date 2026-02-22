@@ -35,17 +35,26 @@ export function ClientDistribution() {
       <ResponsiveContainer width="100%" height={250}>
         <BarChart data={data}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-          <XAxis stroke="var(--muted-foreground)" style={{ fontSize: '12px' }} />
-          <YAxis stroke="var(--muted-foreground)" style={{ fontSize: '12px' }} />
+          <XAxis
+            dataKey="status"
+            stroke="var(--border)"
+            tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }}
+          />
+          <YAxis
+            stroke="var(--border)"
+            tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }}
+          />
           <Tooltip
             contentStyle={{
               backgroundColor: 'var(--card)',
               border: '1px solid var(--border)',
               borderRadius: '8px',
+              color: 'var(--foreground)',
             }}
             labelStyle={{ color: 'var(--foreground)' }}
+            itemStyle={{ color: 'var(--foreground)' }}
           />
-          <Bar dataKey="value" fill="var(--primary)" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="value" fill="var(--chart-1)" radius={[4, 4, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </motion.div>

@@ -43,20 +43,29 @@ export function PerformanceChart() {
       <ResponsiveContainer width="100%" height={300}>
         <LineChart data={data}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-          <XAxis stroke="var(--muted-foreground)" style={{ fontSize: '12px' }} />
-          <YAxis stroke="var(--muted-foreground)" style={{ fontSize: '12px' }} />
+          <XAxis
+            dataKey="month"
+            stroke="var(--border)"
+            tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }}
+          />
+          <YAxis
+            stroke="var(--border)"
+            tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }}
+          />
           <Tooltip
             contentStyle={{
               backgroundColor: 'var(--card)',
               border: '1px solid var(--border)',
               borderRadius: '8px',
+              color: 'var(--foreground)',
             }}
             labelStyle={{ color: 'var(--foreground)' }}
+            itemStyle={{ color: 'var(--foreground)' }}
           />
           <Line
             type="monotone"
             dataKey="policies"
-            stroke="var(--primary)"
+            stroke="var(--chart-1)"
             strokeWidth={2}
             dot={false}
             isAnimationActive={true}
@@ -64,7 +73,7 @@ export function PerformanceChart() {
           <Line
             type="monotone"
             dataKey="matches"
-            stroke="var(--accent)"
+            stroke="var(--chart-2)"
             strokeWidth={2}
             dot={false}
             isAnimationActive={true}
