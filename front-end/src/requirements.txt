@@ -1,3 +1,9 @@
 fastapi
 uvicorn
 pandas
+numpy
+joblib
+scikit-learn
+xgboost
+shap
+pydantic>=2.0
