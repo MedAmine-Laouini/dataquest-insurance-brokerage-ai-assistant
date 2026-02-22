@@ -36,7 +36,7 @@ app = FastAPI(
 # CORS – allow Next.js frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "https://dataquest-insurance-brokerage-ai-as.vercel.app","https://marcos-cnlq.vercel.app"],
+    allow_origins=["http://localhost:3000", "https://dataquest-insurance-brokerage-ai-as.vercel.app","https://dataquest-insurance-brokerage-ai-as-gold.vercel.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
