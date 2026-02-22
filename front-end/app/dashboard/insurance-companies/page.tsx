@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Building2, Loader2 } from 'lucide-react'
 import { containerVariants, itemVariants } from '@/lib/animations'
+import { apiFetch } from '@/lib/api'
 
 export default function InsuranceCompaniesPage() {
   const [companies, setCompanies] = useState<any[]>([])
@@ -11,11 +12,7 @@ export default function InsuranceCompaniesPage() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    fetch('http://localhost:8000/api/insurance-companies')
-      .then(res => {
-        if (!res.ok) throw new Error('Failed to fetch')
-        return res.json()
-      })
+    apiFetch('/api/insurance-companies')
       .then(data => {
         setCompanies(data)
         setLoading(false)

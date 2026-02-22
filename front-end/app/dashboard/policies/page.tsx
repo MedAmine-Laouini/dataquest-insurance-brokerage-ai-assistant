@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { FileText, Loader2 } from 'lucide-react'
 import { containerVariants, itemVariants } from '@/lib/animations'
+import { apiFetch } from '@/lib/api'
 
 export default function PoliciesPage() {
   const [policies, setPolicies] = useState<any[]>([])
@@ -11,11 +12,7 @@ export default function PoliciesPage() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    fetch('http://localhost:8000/api/policies')
-      .then(res => {
-        if (!res.ok) throw new Error('Failed to fetch')
-        return res.json()
-      })
+    apiFetch('/api/policies')
       .then(data => {
         setPolicies(data)
         setLoading(false)

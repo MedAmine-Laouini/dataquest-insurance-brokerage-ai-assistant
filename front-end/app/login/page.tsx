@@ -10,13 +10,20 @@ export default function LoginPage() {
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [isHovered, setIsHovered] = useState(false)
+    const [error, setError] = useState('')
+    const [submitting, setSubmitting] = useState(false)
     const { login } = useAuth()
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
         if (email && password) {
-            // Simulate auth
-            login(email, email.split('@')[0] || 'User')
+            setError('')
+            setSubmitting(true)
+            const result = await login(email, password)
+            if (!result.ok) {
+                setError(result.error || 'Login failed')
+            }
+            setSubmitting(false)
         }
     }
 
@@ -42,12 +49,19 @@ export default function LoginPage() {
                     <h1 className="text-3xl font-bold text-foreground mb-3">Welcome back</h1>
                     <p className="text-muted-foreground">Sign in to your broker account</p>
                     <div className="mt-4 p-3 bg-muted/50 rounded-lg text-xs text-muted-foreground border border-border">
-                        <p><strong>Demo tip:</strong> Use <span className="text-primary">admin@marcos.ai</span> for Admin role, or any other email for Broker role.</p>
+                        <p><strong>Default accounts:</strong></p>
+                        <p className="mt-1">Admin: <span className="text-primary">admin@marcos.ai</span> / <span className="text-primary">admin123</span></p>
+                        <p>Broker: <span className="text-primary">broker@marcos.ai</span> / <span className="text-primary">broker123</span></p>
                     </div>
                 </div>
 
                 <div className="bg-card border border-border rounded-xl p-8 shadow-sm">
                     <form onSubmit={handleSubmit} className="space-y-6">
+                        {error && (
+                            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-sm text-red-500">
+                                {error}
+                            </div>
+                        )}
                         <div className="space-y-2">
                             <label className="text-sm font-medium text-foreground block">Email Address</label>
                             <div className="relative">
@@ -85,12 +99,13 @@ export default function LoginPage() {
 
                         <button
                             type="submit"
+                            disabled={submitting}
                             onMouseEnter={() => setIsHovered(true)}
                             onMouseLeave={() => setIsHovered(false)}
-                            className="w-full relative group overflow-hidden rounded-lg bg-primary text-primary-foreground py-3 px-4 font-medium"
+                            className="w-full relative group overflow-hidden rounded-lg bg-primary text-primary-foreground py-3 px-4 font-medium disabled:opacity-50"
                         >
                             <span className="relative z-10 flex items-center justify-center gap-2">
-                                Sign In
+                                {submitting ? 'Signing in...' : 'Sign In'}
                                 <motion.span
                                     animate={{ x: isHovered ? 4 : 0 }}
                                     transition={{ duration: 0.2 }}

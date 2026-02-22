@@ -11,13 +11,20 @@ export default function SignupPage() {
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [isHovered, setIsHovered] = useState(false)
-    const { login } = useAuth()
+    const [error, setError] = useState('')
+    const [submitting, setSubmitting] = useState(false)
+    const { register } = useAuth()
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
         if (name && email && password) {
-            // Simulate auth
-            login(email, name)
+            setError('')
+            setSubmitting(true)
+            const result = await register(email, name, password)
+            if (!result.ok) {
+                setError(result.error || 'Registration failed')
+            }
+            setSubmitting(false)
         }
     }
 
@@ -46,6 +53,11 @@ export default function SignupPage() {
 
                 <div className="bg-card border border-border rounded-xl p-8 shadow-sm">
                     <form onSubmit={handleSubmit} className="space-y-6">
+                        {error && (
+                            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-sm text-red-500">
+                                {error}
+                            </div>
+                        )}
                         <div className="space-y-2">
                             <label className="text-sm font-medium text-foreground block">Full Name</label>
                             <div className="relative">
@@ -93,12 +105,13 @@ export default function SignupPage() {
 
                         <button
                             type="submit"
+                            disabled={submitting}
                             onMouseEnter={() => setIsHovered(true)}
                             onMouseLeave={() => setIsHovered(false)}
-                            className="w-full relative group overflow-hidden rounded-lg bg-primary text-primary-foreground py-3 px-4 font-medium"
+                            className="w-full relative group overflow-hidden rounded-lg bg-primary text-primary-foreground py-3 px-4 font-medium disabled:opacity-50"
                         >
                             <span className="relative z-10 flex items-center justify-center gap-2">
-                                Create Account
+                                {submitting ? 'Creating...' : 'Create Account'}
                                 <motion.span
                                     animate={{ x: isHovered ? 4 : 0 }}
                                     transition={{ duration: 0.2 }}

@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import {
   BarChart,
   Bar,
@@ -11,15 +11,22 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import { motion } from 'framer-motion'
-
-const data = [
-  { status: 'Active', value: 85 },
-  { status: 'Pending', value: 32 },
-  { status: 'Matched', value: 58 },
-  { status: 'Inactive', value: 15 },
-]
+import { apiFetch } from '@/lib/api'
 
 export function ClientDistribution() {
+  const [data, setData] = useState<{ status: string; value: number }[]>([])
+
+  useEffect(() => {
+    apiFetch('/api/dashboard/stats')
+      .then(stats => {
+        const regionData = Object.entries(stats.region_distribution || {})
+          .map(([status, value]) => ({ status, value: value as number }))
+          .sort((a, b) => b.value - a.value)
+          .slice(0, 10)
+        setData(regionData)
+      })
+      .catch(() => {})
+  }, [])
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -28,8 +35,8 @@ export function ClientDistribution() {
       className="bg-card backdrop-blur-sm rounded-lg border border-border p-6"
     >
       <div className="mb-6">
-        <h3 className="text-lg font-semibold text-foreground">Client Status</h3>
-        <p className="text-sm text-muted-foreground mt-1">Distribution by status</p>
+        <h3 className="text-lg font-semibold text-foreground">Client Regions</h3>
+        <p className="text-sm text-muted-foreground mt-1">Distribution by region code</p>
       </div>
 
       <ResponsiveContainer width="100%" height={250}>

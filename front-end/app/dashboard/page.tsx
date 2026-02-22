@@ -1,8 +1,8 @@
 'use client'
 
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Users, FileText, TrendingUp, AlertCircle, CheckCircle2, Building2, Layers, Clock } from 'lucide-react'
+import { Users, FileText, TrendingUp, AlertCircle, CheckCircle2, Building2, Layers, Clock, Loader2 } from 'lucide-react'
 import { MetricCard } from '@/components/dashboard/metric-card'
 import { PerformanceChart } from '@/components/dashboard/performance-chart'
 import { ClientDistribution } from '@/components/dashboard/client-distribution'
@@ -11,8 +11,30 @@ import { AIClassificationsCard } from '@/components/dashboard/ai-classifications
 import { InsuranceQuotesCard } from '@/components/dashboard/insurance-quotes-card'
 import { ComplianceCard } from '@/components/dashboard/compliance-card'
 import { containerVariants, itemVariants } from '@/lib/animations'
+import { apiFetch } from '@/lib/api'
 
 export default function DashboardPage() {
+  const [stats, setStats] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    apiFetch('/api/dashboard/stats')
+      .then(data => {
+        setStats(data)
+        setLoading(false)
+      })
+      .catch(() => setLoading(false))
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center py-24 text-muted-foreground">
+        <Loader2 className="w-8 h-8 animate-spin" />
+        <span className="ml-3">Loading dashboard...</span>
+      </div>
+    )
+  }
+
   return (
     <motion.div
       variants={containerVariants}
@@ -32,34 +54,34 @@ export default function DashboardPage() {
         className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
       >
         <MetricCard
-          label="Total Customers"
-          value="327"
+          label="Total Clients"
+          value={stats?.total_clients?.toLocaleString() || '0'}
           trend={12}
-          trendLabel="vs last month"
+          trendLabel="from train.csv"
           icon={<Users />}
           color="blue"
         />
         <MetricCard
-          label="Bundles Classified"
-          value="284"
+          label="Active Policies"
+          value={stats?.total_active?.toLocaleString() || '0'}
           trend={8}
-          trendLabel="this month"
+          trendLabel="not cancelled"
           icon={<TrendingUp />}
           color="purple"
         />
         <MetricCard
-          label="Pending Classification"
-          value="43"
-          trend={-5}
-          trendLabel="awaiting review"
+          label="Cancelled"
+          value={stats?.total_cancelled?.toLocaleString() || '0'}
+          trend={-1 * (stats?.cancellation_rate || 0)}
+          trendLabel="cancellation rate"
           icon={<AlertCircle />}
           color="orange"
         />
         <MetricCard
-          label="Model Accuracy"
-          value="91%"
+          label="Avg Income"
+          value={stats?.avg_income ? `$${Number(stats.avg_income).toLocaleString()}` : '$0'}
           trend={3}
-          trendLabel="top-1 accuracy"
+          trendLabel="estimated annual"
           icon={<FileText />}
           color="green"
         />
